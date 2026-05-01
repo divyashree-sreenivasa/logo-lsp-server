@@ -1,0 +1,6 @@
+; draw a square
+TO square :side
+  REPEAT 4 [FORWARD :side RIGHT 90]
+END
+
+square 100
