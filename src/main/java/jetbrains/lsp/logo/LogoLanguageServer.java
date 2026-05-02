@@ -38,6 +38,9 @@ public class LogoLanguageServer implements LanguageServer, LanguageClientAware {
         // Go-to-declaration
         caps.setDeclarationProvider(Either.forLeft(true));
 
+        // Hover
+        caps.setHoverProvider(Either.forLeft(true));
+
         ServerInfo serverInfo = new ServerInfo("LOGO LSP Server", "1.0");
         return CompletableFuture.completedFuture(new InitializeResult(caps, serverInfo));
     }

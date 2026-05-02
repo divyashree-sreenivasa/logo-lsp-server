@@ -1,6 +1,8 @@
 package jetbrains.lsp.logo;
 
+import jetbrains.lsp.logo.feature.DiagnosticsProvider;
 import jetbrains.lsp.logo.feature.GotoDeclarationProvider;
+import jetbrains.lsp.logo.feature.HoverProvider;
 import jetbrains.lsp.logo.feature.SemanticTokensProvider;
 import jetbrains.lsp.logo.store.DocumentState;
 import jetbrains.lsp.logo.store.DocumentStore;
@@ -22,9 +24,11 @@ public class LogoTextDocumentService implements TextDocumentService {
     private final LogoLanguageServer server;
     private LanguageClient client;
 
-    private final DocumentStore store = new DocumentStore();
-    private final SemanticTokensProvider semanticTokensProvider = new SemanticTokensProvider();
-    private final GotoDeclarationProvider gotoDeclarationProvider = new GotoDeclarationProvider();
+    private final DocumentStore store                      = new DocumentStore();
+    private final SemanticTokensProvider semanticTokens   = new SemanticTokensProvider();
+    private final GotoDeclarationProvider gotoDeclaration = new GotoDeclarationProvider();
+    private final DiagnosticsProvider diagnostics          = new DiagnosticsProvider();
+    private final HoverProvider hover                      = new HoverProvider();
 
     public LogoTextDocumentService(LogoLanguageServer server) {
         this.server = server;
@@ -38,23 +42,28 @@ public class LogoTextDocumentService implements TextDocumentService {
 
     @Override
     public void didOpen(DidOpenTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
+        String uri  = params.getTextDocument().getUri();
         String text = params.getTextDocument().getText();
         log.info("didOpen {}", uri);
-        store.update(uri, text);
+        analyzeAndPublish(uri, text);
     }
 
     @Override
     public void didChange(DidChangeTextDocumentParams params) {
-        String uri = params.getTextDocument().getUri();
+        String uri  = params.getTextDocument().getUri();
         String text = params.getContentChanges().get(0).getText();
         log.info("didChange {}", uri);
-        store.update(uri, text);
+        analyzeAndPublish(uri, text);
     }
 
     @Override
     public void didClose(DidCloseTextDocumentParams params) {
-        store.remove(params.getTextDocument().getUri());
+        String uri = params.getTextDocument().getUri();
+        store.remove(uri);
+        // Clear diagnostics when the file is closed
+        if (client != null) {
+            client.publishDiagnostics(new PublishDiagnosticsParams(uri, List.of()));
+        }
     }
 
     @Override
@@ -65,25 +74,43 @@ public class LogoTextDocumentService implements TextDocumentService {
 
     @Override
     public CompletableFuture<SemanticTokens> semanticTokensFull(SemanticTokensParams params) {
-        String uri = params.getTextDocument().getUri();
-        DocumentState state = store.get(uri);
-        if (state == null) {
-            return CompletableFuture.completedFuture(new SemanticTokens(List.of()));
-        }
-        return CompletableFuture.completedFuture(semanticTokensProvider.provide(state));
+        DocumentState state = store.get(params.getTextDocument().getUri());
+        if (state == null) return CompletableFuture.completedFuture(new SemanticTokens(List.of()));
+        return CompletableFuture.completedFuture(semanticTokens.provide(state));
     }
 
     @Override
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>>
     declaration(DeclarationParams params) {
-        String uri = params.getTextDocument().getUri();
-        Position cursor = params.getPosition();
+        String uri        = params.getTextDocument().getUri();
+        Position cursor   = params.getPosition();
         DocumentState state = store.get(uri);
-        if (state == null) {
-            return CompletableFuture.completedFuture(Either.forLeft(List.of()));
-        }
-        Optional<Location> location = gotoDeclarationProvider.resolve(uri, cursor, state);
+        if (state == null) return CompletableFuture.completedFuture(Either.forLeft(List.of()));
+        Optional<Location> location = gotoDeclaration.resolve(uri, cursor, state);
         return CompletableFuture.completedFuture(
                 Either.forLeft(location.map(List::of).orElse(List.of())));
+    }
+
+    @Override
+    public CompletableFuture<Hover> hover(HoverParams params) {
+        String uri        = params.getTextDocument().getUri();
+        Position cursor   = params.getPosition();
+        DocumentState state = store.get(uri);
+        if (state == null) return CompletableFuture.completedFuture(null);
+        return CompletableFuture.completedFuture(
+                hover.hover(cursor, state).orElse(null));
+    }
+
+    // Internal
+    private void analyzeAndPublish(String uri, String text) {
+        DocumentState state = store.update(uri, text);
+        if (client == null) return;
+
+        List<Diagnostic> diags = diagnostics.check(
+                state.getParseResult().getTree(),
+                state.getSymbolTable(),
+                state.getParseResult().getSyntaxErrors());
+
+        client.publishDiagnostics(new PublishDiagnosticsParams(uri, diags));
     }
 }
