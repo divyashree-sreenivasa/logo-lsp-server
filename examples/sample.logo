@@ -1,6 +1,41 @@
-; draw a square
-TO square :side
-  REPEAT 4 [FORWARD :side RIGHT 90]
+; draws a regular polygon with given sides and size
+TO polygon :sides :size
+  REPEAT :sides [FORWARD :size RIGHT 360 / :sides]
 END
 
-square 100
+; draws a spiral using a while loop
+TO spiral :step :maxsize
+  MAKE "size :step
+  WHILE [:size < :maxsize] [
+    FORWARD :size
+    RIGHT 91
+    MAKE "size :size + :step
+  ]
+END
+
+; recursive tree branch
+TO tree :length
+  IF :length < 5 [STOP]
+  FORWARD :length
+  LEFT 30
+  tree :length * 0.7
+  RIGHT 60
+  tree :length * 0.7
+  LEFT 30
+  BACK :length
+END
+
+; prints numbers 1 to n using a for loop
+TO printnumbers :n
+  FOR [i 1 :n] [
+    PRINT :i
+  ]
+END
+
+; run examples
+CLEARSCREEN
+PENDOWN
+polygon 6 60
+PENUP
+HOME
+spiral 5 100

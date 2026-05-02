@@ -1,0 +1,382 @@
+; code from: https://turtleacademy.com/programs/408210
+
+TO glog :n
+ output item :n [ 0 1 25 2 50 26 198 3 223 51 238 27 104 199 75 4 100 224 14 52 141 239 129 28 193 105 248 200 8 76 113 5 138 101 47 225 36 15 33 53 147 142 218 240 18 130 69 29 181 194 125 106 39 249 185 201 154 9 120 77 228 114 166 6 191 139 98 102 221 48 253 226 152 37 179 16 145 34 136 54 208 148 206 143 150 219 189 241 210 19 92 131 56 70 64 30 66 182 163 195 72 126 110 107 58 40 84 250 133 186 61 202 94 155 159 10 21 121 43 78 212 229 172 115 243 167 87 7 112 192 247 140 128 99 13 103 74 222 237 49 197 254 24 227 165 153 119 38 184 180 124 17 68 146 217 35 32 137 46 55 63 209 91 149 188 207 205 144 135 151 178 220 252 190 97 242 86 211 171 20 42 93 158 132 60 57 83 71 109 65 162 31 45 67 216 183 123 164 118 196 23 73 236 127 12 111 246 108 161 59 82 41 157 85 170 251 96 134 177 187 204 62 90 203 89 95 176 156 169 160 81 11 245 22 235 122 117 44 215 79 174 213 233 230 231 173 232 116 214 244 234 168 80 88 175 ]
+END
+
+TO gexp :n
+ while (:n < 0) [ make "n :n + 255 ]
+ while (:n >= 256) [ make "n :n - 255 ]
+ output item :n+1 [ 1 2 4 8 16 32 64 128 29 58 116 232 205 135 19 38 76 152 45 90 180 117 234 201 143 3 6 12 24 48 96 192 157 39 78 156 37 74 148 53 106 212 181 119 238 193 159 35 70 140 5 10 20 40 80 160 93 186 105 210 185 111 222 161 95 190 97 194 153 47 94 188 101 202 137 15 30 60 120 240 253 231 211 187 107 214 177 127 254 225 223 163 91 182 113 226 217 175 67 134 17 34 68 136 13 26 52 104 208 189 103 206 129 31 62 124 248 237 199 147 59 118 236 197 151 51 102 204 133 23 46 92 184 109 218 169 79 158 33 66 132 21 42 84 168 77 154 41 82 164 85 170 73 146 57 114 228 213 183 115 230 209 191 99 198 145 63 126 252 229 215 179 123 246 241 255 227 219 171 75 150 49 98 196 149 55 110 220 165 87 174 65 130 25 50 100 200 141 7 14 28 56 112 224 221 167 83 166 81 162 89 178 121 242 249 239 195 155 43 86 172 69 138 9 18 36 72 144 61 122 244 245 247 243 251 235 203 139 11 22 44 88 176 125 250 233 207 131 27 54 108 216 173 71 142 1 ]
+END
+
+;*********************************************************;
+
+TO QRPolynomial :num :shift
+	make "offset 0
+ while (AND (:offset < count :num) ((item :offset+1 :num) = 0)) [ make "offset :offset + 1 ]
+	make "thisnum array ((count :num) - :offset + :shift)
+	for [ i 1 ((count :num) - :offset) ]  [
+		setitem :i :thisnum item :i + :offset :num
+	 ]
+ if :shift > 0 [
+  for [ i ((count :num) - :offset + 1) (count :thisnum) ]  [
+     setitem :i :thisnum 0
+   ]
+  ]
+ output :thisnum
+END
+
+TO Polynomial_mul :a :b
+ make "num array ((count :a) + (count :b) - 1)
+ for [ i 1 (count :num) ]  [ setitem :i :num 0 ]
+ for [ i 1 (count :a) ]  [
+  for [ j 1 (count :b) ]  [
+   setitem :i + :j - 1 :num (bitxor (item :i + :j - 1 :num) (gexp (glog item :i :a) + (glog item :j :b ))
+   ]
+  ]
+ output QRPolynomial :num 0
+END
+
+TO Polynomial_mod :a :b
+ if (count :a) < (count :b) [ output :a ]
+ make "ratio (glog item 1 :a) - (glog item 1 :b)
+ make "num array count :a
+ for [ i 1 (count :b) ]  [ setitem :i :num (bitxor (item :i :a) (gexp :ratio + glog item :i :b)) ]
+ if (count :b) < (count :a) [
+  for [ i (count :b)+1 (count :a) ]  [ setitem :i :num (item :i :a) ]
+  ]
+ output Polynomial_mod QRPolynomial :num 0 :b
+END
+
+;*********************************************************;
+
+make "MODE_8BIT_BYTE 4
+
+;*********************************************************;
+
+make "ECL_L 1
+make "ECL_M 0
+make "ECL_Q 3
+make "ECL_H 2
+
+;*********************************************************;
+
+make "G15 1335 make "G18 7973 make "G15_MASK 21522
+
+TO getBCHDigit :data
+ make "digit 0
+ while :data <> 0 [ make "digit :digit + 1 make "data lshift :data -1 ]
+ output :digit
+END
+
+TO getBCHTypeInfo :data
+ make "d ashift :data 10
+ while (getBCHDigit :d) >= (getBCHDigit :G15) [ make "d ( bitxor :d ashift :G15 ( getBCHDigit :d ) - ( getBCHDigit :G15 ) ) ]
+ output (bitxor ( bitor ashift :data 10 :d) :G15_MASK)
+END
+
+TO getBCHTypeNumber :data
+ make "d ashift :data 12
+ while (getBCHDigit :d) >= (getBCHDigit :G18) [ make "d ( bitxor :d ashift :G18 ( getBCHDigit :d ) - ( getBCHDigit :G18 ) ) ]
+	output (bitor ashift :data 12 :d)
+END
+
+TO getMask :maskPattern :i :j
+ if :maskPattern=0 [ output (:i + :j) % 2 = 0 ]
+ if :maskPattern=1 [ output :i % 2 = 0 ]
+ if :maskPattern=2 [ output :j % 3 = 0 ]
+ if :maskPattern=3 [ output (:i + :j) % 3 = 0 ]
+ if :maskPattern=4 [ output (int (:i / 2) + int (:j / 3) ) % 2 = 0 ]
+ if :maskPattern=5 [ output (:i * :j) % 2 + (:i * :j) % 3 = 0 ]
+ if :maskPattern=6 [ output ( (:i * :j) % 2 + (:i * :j) % 3) % 2 = 0 ]
+ if :maskPattern=7 [ output ( (:i * :j) % 3 + (:i + :j) % 2) % 2 = 0 ]
+END
+
+TO getErrorCorrectPolynomial :errorCorrectLength
+ make "a QRPolynomial [ 1 ] 0
+ for [ i 0 :errorCorrectLength - 1 ]  [ make "a Polynomial_mul :a QRPolynomial (list 1 gexp :i) 0 ]
+ output :a
+END
+
+TO getLengthInBits :type
+ if :type < 10 [ output 8 ]
+ if :type < 41 [ output 16 ]
+END
+
+;*********************************************************;
+
+make "QRRSBlock_RS_BLOCK_TABLE [ [ 1 26 19 ]  [ 1 26 16 ]  [ 1 26 13 ]  [ 1 26 9 ]  [ 1 44 34 ]  [ 1 44 28 ]  [ 1 44 22 ]  [ 1 44 16 ]  [ 1 70 55 ]  [ 1 70 44 ]  [ 2 35 17 ]  [ 2 35 13 ]  [ 1 100 80 ]  [ 2 50 32 ]  [ 2 50 24 ]  [ 4 25 9 ]  [ 1 134 108 ]  [ 2 67 43 ]  [ 2 33 15 2 34 16 ]  [ 2 33 11 2 34 12 ]  [ 2 86 68 ]  [ 4 43 27 ]  [ 4 43 19 ]  [ 4 43 15 ]  [ 2 98 78 ]  [ 4 49 31 ]  [ 2 32 14 4 33 15 ]  [ 4 39 13 1 40 14 ]  [ 2 121 97 ]  [ 2 60 38 2 61 39 ]  [ 4 40 18 2 41 19 ]  [ 4 40 14 2 41 15 ]  [ 2 146 116 ]  [ 3 58 36 2 59 37 ]  [ 4 36 16 4 37 17 ]  [ 4 36 12 4 37 13 ]  [ 2 86 68 2 87 69 ]  [ 4 69 43 1 70 44 ]  [ 6 43 19 2 44 20 ]  [ 6 43 15 2 44 16 ]  [ 4 101 81 ]  [ 1 80 50 4 81 51 ]  [ 4 50 22 4 51 23 ]  [ 3 36 12 8 37 13 ]  [ 2 116 92 2 117 93 ]  [ 6 58 36 2 59 37 ]  [ 4 46 20 6 47 21 ]  [ 7 42 14 4 43 15 ]  [ 4 133 107 ]  [ 8 59 37 1 60 38 ]  [ 8 44 20 4 45 21 ]  [ 12 33 11 4 34 12 ]  [ 3 145 115 1 146 116 ]  [ 4 64 40 5 65 41 ]  [ 11 36 16 5 37 17 ]  [ 11 36 12 5 37 13 ]  [ 5 109 87 1 110 88 ]  [ 5 65 41 5 66 42 ]  [ 5 54 24 7 55 25 ]  [ 11 36 12 ]  [ 5 122 98 1 123 99 ]  [ 7 73 45 3 74 46 ]  [ 15 43 19 2 44 20 ]  [ 3 45 15 13 46 16 ]  [ 1 135 107 5 136 108 ]  [ 10 74 46 1 75 47 ]  [ 1 50 22 15 51 23 ]  [ 2 42 14 17 43 15 ]  [ 5 150 120 1 151 121 ]  [ 9 69 43 4 70 44 ]  [ 17 50 22 1 51 23 ]  [ 2 42 14 19 43 15 ]  [ 3 141 113 4 142 114 ]  [ 3 70 44 11 71 45 ]  [ 17 47 21 4 48 22 ]  [ 9 39 13 16 40 14 ]  [ 3 135 107 5 136 108 ]  [ 3 67 41 13 68 42 ]  [ 15 54 24 5 55 25 ]  [ 15 43 15 10 44 16 ]  [ 4 144 116 4 145 117 ]  [ 17 68 42 ]  [ 17 50 22 6 51 23 ]  [ 19 46 16 6 47 17 ]  [ 2 139 111 7 140 112 ]  [ 17 74 46 ]  [ 7 54 24 16 55 25 ]  [ 34 37 13 ]  [ 4 151 121 5 152 122 ]  [ 4 75 47 14 76 48 ]  [ 11 54 24 14 55 25 ]  [ 16 45 15 14 46 16 ]  [ 6 147 117 4 148 118 ]  [ 6 73 45 14 74 46 ]  [ 11 54 24 16 55 25 ]  [ 30 46 16 2 47 17 ]  [ 8 132 106 4 133 107 ]  [ 8 75 47 13 76 48 ]  [ 7 54 24 22 55 25 ]  [ 22 45 15 13 46 16 ]  [ 10 142 114 2 143 115 ]  [ 19 74 46 4 75 47 ]  [ 28 50 22 6 51 23 ]  [ 33 46 16 4 47 17 ]  [ 8 152 122 4 153 123 ]  [ 22 73 45 3 74 46 ]  [ 8 53 23 26 54 24 ]  [ 12 45 15 28 46 16 ]  [ 3 147 117 10 148 118 ]  [ 3 73 45 23 74 46 ]  [ 4 54 24 31 55 25 ]  [ 11 45 15 31 46 16 ]  [ 7 146 116 7 147 117 ]  [ 21 73 45 7 74 46 ]  [ 1 53 23 37 54 24 ]  [ 19 45 15 26 46 16 ]  [ 5 145 115 10 146 116 ]  [ 19 75 47 10 76 48 ]  [ 15 54 24 25 55 25 ]  [ 23 45 15 25 46 16 ]  [ 13 145 115 3 146 116 ]  [ 2 74 46 29 75 47 ]  [ 42 54 24 1 55 25 ]  [ 23 45 15 28 46 16 ]  [ 17 145 115 ]  [ 10 74 46 23 75 47 ]  [ 10 54 24 35 55 25 ]  [ 19 45 15 35 46 16 ]  [ 17 145 115 1 146 116 ]  [ 14 74 46 21 75 47 ]  [ 29 54 24 19 55 25 ]  [ 11 45 15 46 46 16 ]  [ 13 145 115 6 146 116 ]  [ 14 74 46 23 75 47 ]  [ 44 54 24 7 55 25 ]  [ 59 46 16 1 47 17 ]  [ 12 151 121 7 152 122 ]  [ 12 75 47 26 76 48 ]  [ 39 54 24 14 55 25 ]  [ 22 45 15 41 46 16 ]  [ 6 151 121 14 152 122 ]  [ 6 75 47 34 76 48 ]  [ 46 54 24 10 55 25 ]  [ 2 45 15 64 46 16 ]  [ 17 152 122 4 153 123 ]  [ 29 74 46 14 75 47 ]  [ 49 54 24 10 55 25 ]  [ 24 45 15 46 46 16 ]  [ 4 152 122 18 153 123 ]  [ 13 74 46 32 75 47 ]  [ 48 54 24 14 55 25 ]  [ 42 45 15 32 46 16 ]  [ 20 147 117 4 148 118 ]  [ 40 75 47 7 76 48 ]  [ 43 54 24 22 55 25 ]  [ 10 45 15 67 46 16 ]  [ 19 148 118 6 149 119 ]  [ 18 75 47 31 76 48 ]  [ 34 54 24 34 55 25 ]  [ 20 45 15 61 46 16 ] ]
+
+TO QRRSBlock_getRsBlockTable :typeNumber :ECL
+ if :ECL = :ECL_L [ output item (:typeNumber - 1) * 4 + 1 :QRRSBlock_RS_BLOCK_TABLE ]
+ if :ECL = :ECL_M [ output item (:typeNumber - 1) * 4 + 2 :QRRSBlock_RS_BLOCK_TABLE ]
+ if :ECL = :ECL_Q [ output item (:typeNumber - 1) * 4 + 3 :QRRSBlock_RS_BLOCK_TABLE ]
+ if :ECL = :ECL_H [ output item (:typeNumber - 1) * 4 + 4 :QRRSBlock_RS_BLOCK_TABLE ]
+END
+
+TO QRRSBlock_getRSBlocks :typeNumber :errorCorrectLevel
+ make "rsBlock QRRSBlock_getRsBlockTable :typeNumber :errorCorrectLevel
+ make "length (count :rsBlock) / 3;
+ make "list [ ]
+ for [ i 0 :length - 1 ]  [
+  make "count item :i * 3 + 1 :rsBlock
+  make "totalCount item :i * 3 + 2 :rsBlock
+  make "dataCount item :i * 3 + 3 :rsBlock
+  for [ j 0:count - 1 ]  [ make "list lput (list :totalCount :dataCount) :list ]
+  ]
+ output :list
+END
+
+;*********************************************************;
+
+TO QRBitBuffer
+ make "this_buffer [ ]
+END
+
+TO buffer_get :index
+ output item :index + 1 this_buffer
+END
+
+TO buffer_getByte :index
+ make "n 0
+ for [ i :index*8 :index*8+7 ]  [
+  make "n (bitor lshift :n 1 item :i + 1 :this_buffer)
+  ]
+ output :n
+END
+
+TO buffer_putBit :bit
+ make "this_buffer lput :bit :this_buffer
+END
+
+TO buffer_put :num :length
+ for [ i 1 :length ]  [
+  buffer_putBit (bitand 1 lshift :num :i - :length)
+  ]
+END
+
+;*********************************************************;
+
+TO QR8bitByte_write :data
+ for [ i 1 count :data ]  [
+  buffer_put ascii item :i :data 8
+  ]
+END
+
+;*********************************************************;
+
+TO QRCode :typeNumber :errorCorrectLevel
+	make "this_typeNumber :typeNumber
+	make "this_errorCorrectLevel :errorCorrectLevel
+END
+
+TO QRCode_createBytes :rsBlocks
+ make "offset 0
+ make "maxDcCount 0
+ make "maxEcCount 0
+ make "dcdata array count :rsBlocks
+ make "ecdata array count :rsBlocks
+ for [ r 1 (count :rsBlocks) ]  [
+  make "dcCount item 2 item :r :rsBlocks
+  make "ecCount (item 1 item :r :rsBlocks) - :dcCount
+  if :dcCount > :maxDcCount [ make "maxDcCount :dcCount ]
+  if :ecCount > :maxEcCount [ make "maxEcCount :ecCount ]
+  setitem :r :dcdata array :dcCount
+  for [ i 1 :dcCount ]  [
+   setitem :i item :r :dcdata (bitand 255 buffer_getByte :i+:offset-1)
+   ]
+	make "offset :offset+:dcCount;
+	make "rsPoly getErrorCorrectPolynomial :ecCount
+	make "rawPoly QRPolynomial item :r :dcdata (count :rsPoly)-1
+  make "modPoly Polynomial_mod :rawPoly :rsPoly
+	setitem :r :ecdata array (count :rsPoly)-1
+  for [ i 1 (count item :r :ecdata) ]  [
+   make "modIndex :i + (count :modPoly) - (count item :r :ecdata)
+   ifelse :modIndex > 0 [ setitem :i item :r :ecdata (item :modIndex :modPoly) ]  [ setitem :i item :r :ecdata 0 ]
+   ]
+  ]
+ make "totalCodeCount 0
+ for [ i 1 (count :rsBlocks) ]  [ make "totalCodeCount :totalCodeCount + item 1 item :i :rsBlocks ]
+ make "rdata array :totalCodeCount
+ make "index 1
+ for [ i 1 :maxDcCount ]  [
+  for [ r 1 (count :rsBlocks) ]  [
+   if :i <= count item :r :dcdata [
+    setitem :index :rdata item :i item :r :dcdata
+    make "index :index+1
+    ]
+   ]
+  ]
+ for [ i 1 :maxEcCount ]  [
+  for [ r 1 (count :rsBlocks) ]  [
+   if :i <= count item :r :ecdata [
+    setitem :index :rdata item :i item :r :ecdata
+    make "index :index+1
+    ]
+   ]
+  ]
+ output :rdata
+END
+
+make "QRCode_PAD0 236
+make "QRCode_PAD1 17
+
+TO QRCode_createData :typeNumber :errorCorrectLevel :data
+ make "rsBlocks QRRSBlock_getRSBlocks :typeNumber :errorCorrectLevel
+ QRBitBuffer
+ buffer_put :MODE_8BIT_BYTE 4
+ buffer_put (count :data) getLengthInBits :typeNumber
+ QR8bitByte_write :data
+ make "totalDataCount 0
+ for [ i 1 count :rsBlocks ]  [ make "totalDataCount :totalDataCount + item 2 item :i :rsBlocks ]
+ if ((count :this_buffer) + 4) <= (:totalDataCount * 8) [ buffer_put 0 4 ]
+ while (count :this_buffer)% 8 <> 0 [ buffer_putBit 0 ]
+ for [ i (count :this_buffer)/8 (:totalDataCount-1) 2 ]  [
+  buffer_put :QRCode_PAD0 8
+  if (count :this_buffer) < (:totalDataCount * 8) [ buffer_put :QRCode_PAD1 8 ]
+  ]
+ output QRCode_createBytes :rsBlocks
+END
+
+;*********************************************************;
+
+TO qr_getBestMaskPattern
+ output 0
+END
+
+to qr_setupTimingPattern
+ for [ r 9 (:this_moduleCount-8) ]  [ if (item 7 item :r :this_modules) = 2 [ setitem 7 item :r :this_modules (:r % 2) ] ]
+ for [ r 9 (:this_moduleCount-8) ]  [ if (item :r item 7 :this_modules) = 2 [ setitem :r item 7 :this_modules (:r % 2) ] ]
+END
+
+make "PATTERN_POSITION_TABLE [ [ ]  [ 6 18 ]  [ 6 22 ]  [ 6 26 ]  [ 6 30 ]  [ 6 34 ]  [ 6 22 38 ]  [ 6 24 42 ]  [ 6 26 46 ]  [ 6 28 50 ]  [ 6 30 54 ]  [ 6 32 58 ]  [ 6 34 62 ]  [ 6 26 46 66 ]  [ 6 26 48 70 ]  [ 6 26 50 74 ]  [ 6 30 54 78 ]  [ 6 30 56 82 ]  [ 6 30 58 86 ]  [ 6 34 62 90 ]  [ 6 28 50 72 94 ]  [ 6 26 50 74 98 ]  [ 6 30 54 78 102 ]  [ 6 28 54 80 106 ]  [ 6 32 58 84 110 ]  [ 6 30 58 86 114 ]  [ 6 34 62 90 118 ]  [ 6 26 50 74 98 122 ]  [ 6 30 54 78 102 126 ]  [ 6 26 52 78 104 130 ]  [ 6 30 56 82 108 134 ]  [ 6 34 60 86 112 138 ]  [ 6 30 58 86 114 142 ]  [ 6 34 62 90 118 146 ]  [ 6 30 54 78 102 126 150 ]  [ 6 24 50 76 102 128 154 ]  [ 6 28 54 80 106 132 158 ]  [ 6 32 58 84 110 136 162 ]  [ 6 26 54 82 110 138 166 ]  [ 6 30 58 86 114 142 170 ] ]
+
+TO qr_setupPositionAdjustPattern
+ make "pos item :this_typeNumber :PATTERN_POSITION_TABLE
+ for [ i 1 (count :pos) ]  [
+  for [ j 1 (count :pos) ]  [
+   make "row (item :i :pos) + 1;
+   make "col (item :j :pos) + 1;
+   if (item :col item :row :this_modules) = 2 [
+    for [ r -2 2 ]  [
+     for [ c -2 2 ]  [
+      setitem (:col + :c) item (:row + :r) :this_modules (or (:r = -2) (:r = 2) (:c = -2) (:c = 2) (and (:r = 0) (:c = 0)))
+      ]
+     ]
+    ]
+   ]
+  ]
+END
+
+TO qr_setupPositionProbePattern :row :col
+ for [ r -1 7 ]  [
+  if (and (:row + :r > 0) (:this_moduleCount >= :row + :r)) [
+   for [ c -1 7 ]  [
+    if (and (:col + :c > 0) (:this_moduleCount >= :col + :c)) [
+     setitem (:col + :c) item (:row + :r) :this_modules (or (and (0 <= :r) (:r <= 6) (or (:c = 0) (:c = 6))) (and (0 <= :c) (:c <= 6) (or (:r = 0) (:r = 6))) (and (2 <= :r) (:r <= 4) (2 <= :c) (:c <= 4)))
+     ]
+    ]
+   ]
+  ]
+END
+
+TO qr_setupTypeInfo :maskPattern
+ make "tdata (bitor lshift :this_errorCorrectLevel 3 :maskPattern)
+ make "bits getBCHTypeInfo :tdata
+ for [ i 0 14 ]  [
+  make "mod ((bitand (ashift :bits -:i) 1) = 1)
+  ifelse (:i < 6) [ setitem 9 item :i+1 :this_modules :mod ]
+   [ ifelse (:i < 8) [ setitem 9 item :i+2 :this_modules :mod ]  [ setitem 9 item :this_moduleCount-14+:i :this_modules :mod ] ]
+  ifelse (:i < 8) [ setitem :this_moduleCount-:i item 9 :this_modules :mod ]
+   [ ifelse (:i < 9) [ setitem 16-:i item 9 :this_modules :mod ]  [ setitem 15-:i item 9 :this_modules :mod ] ]
+  ]
+ setitem 9 item :this_moduleCount-7 :this_modules 1
+END
+
+TO qr_setupTypeNumber
+ make "bits getBCHTypeNumber :this_typeNumber
+ for [ i 0 17 ]  [
+  make "mod ((bitand (ashift :bits -:i) 1) = 1)
+  setitem (:i%3)+:this_moduleCount-10 item (int :i/3)+1 :this_modules :mod
+  setitem (int :i/3)+1 item (:i%3)+:this_moduleCount-10 :this_modules :mod
+  ]
+END
+
+TO qr_mapData_f :col :data :maskPattern
+ for [ c 0 1 ]  [
+  if (item :col-:c+1 item :row+1 :this_modules) = 2 [
+   make "dark 0
+   if :byteIndex < (count :data) [
+    make "dark (bitand (lshift item :byteIndex+1 :data -:bitIndex) 1)
+    ]
+   if getMask :maskPattern :row :col-:c [ make "dark not :dark ]
+   setitem :col-:c+1 item :row+1 :this_modules :dark
+   make "bitIndex :bitIndex-1
+   if :bitIndex = -1 [
+    make "byteIndex :byteIndex+1
+    make "bitIndex 7
+    ]
+   ]
+  ]
+ make "row :row+:inc
+END
+
+TO qr_mapData :data :maskPattern
+ make "inc -1
+ make "row :this_moduleCount - 1
+ make "bitIndex 7
+ make "byteIndex 0
+ for [ col (:this_moduleCount-1) 7 -2 ]  [
+  do.while [ qr_mapData_f :col :data :maskPattern ] (and (:row >= 0) (:this_moduleCount > :row))
+	make "row :row-:inc
+	make "inc -:inc
+  ]
+ for [ col 5 1 -2 ]  [
+  do.while [ qr_mapData_f :col :data :maskPattern ] (and (:row >= 0) (:this_moduleCount > :row))
+	make "row :row-:inc
+	make "inc -:inc
+  ]
+END
+
+
+;*********************************************************;
+
+To fillsquare :n :col
+ filled :col [ repeat 3 [ fd :n rt 90 ] ] rt 90
+END
+
+;*********************************************************;
+
+make "this_data readword
+make "maskPattern 0
+make "this_errorCorrectLevel :ECL_L
+make "this_typeNumber 2
+make "this_moduleCount :this_typeNumber * 4 + 17
+make "this_modules array :this_moduleCount
+for [ i 1 :this_moduleCount ]  [
+ setitem :i :this_modules array :this_moduleCount
+ for [ j 1 :this_moduleCount ]  [
+ 	setitem :j item :i :this_modules 2
+  ]
+]
+qr_setupPositionProbePattern 1 1
+qr_setupPositionProbePattern :this_moduleCount-6 1
+qr_setupPositionProbePattern 1 :this_moduleCount-6
+qr_setupPositionAdjustPattern
+qr_setupTimingPattern
+qr_setupTypeInfo :maskPattern
+if :this_typeNumber >= 7 [ qr_setupTypeNumber ]
+make "data QRCode_createData :this_typeNumber :this_errorCorrectLevel :this_data
+qr_mapData :data :maskPattern
+
+make "pw int 650/:this_moduleCount
+pu setcolor [ 200 200 200 ] fill
+for [ i 1 :this_moduleCount ]  [
+ setxy -325 -:i*:pw+325
+ for [ j 1 :this_moduleCount ]  [
+  make "color item (item :i item :j :this_modules)+1 [ 7 0 ]
+  fillsquare :pw :color
+  ]
+]
+ht

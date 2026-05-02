@@ -1,7 +1,9 @@
 package jetbrains.lsp.logo.feature;
 
+import jetbrains.lsp.logo.analysis.SymbolTable;
 import jetbrains.lsp.logo.parser.LogoLexer;
 import jetbrains.lsp.logo.parser.LogoParseResult;
+import jetbrains.lsp.logo.store.DocumentState;
 import org.antlr.v4.runtime.Token;
 import org.eclipse.lsp4j.SemanticTokens;
 
@@ -36,20 +38,33 @@ public class SemanticTokensProvider {
     private static final int MOD_DEFINITION      = 2;
     private static final int MOD_READONLY        = 4;
 
-    // Control-flow / structural keywords
+    // Control flow, variables, I/O
     private static final Set<Integer> KEYWORDS = Set.of(
-            LogoLexer.TO, LogoLexer.END, LogoLexer.REPEAT,
-            LogoLexer.IF, LogoLexer.IFELSE, LogoLexer.MAKE,
-            LogoLexer.OUTPUT, LogoLexer.STOP, LogoLexer.PRINT
+            LogoLexer.TO, LogoLexer.END,
+            LogoLexer.REPEAT, LogoLexer.WHILE, LogoLexer.UNTIL,
+            LogoLexer.FOR, LogoLexer.FOREVER,
+            LogoLexer.IF, LogoLexer.IFELSE,
+            LogoLexer.MAKE, LogoLexer.LOCAL, LogoLexer.LOCALMAKE,
+            LogoLexer.OUTPUT, LogoLexer.STOP,
+            LogoLexer.PRINT, LogoLexer.SHOW
     );
 
-    // Built-in turtle / pen commands
+    // Turtle / pen commands
     private static final Set<Integer> MACROS = Set.of(
             LogoLexer.FORWARD, LogoLexer.BACK, LogoLexer.LEFT, LogoLexer.RIGHT,
-            LogoLexer.PENUP, LogoLexer.PENDOWN, LogoLexer.HOME, LogoLexer.CLEARSCREEN,
-            LogoLexer.SETX, LogoLexer.SETY, LogoLexer.SETXY,
-            LogoLexer.SETPC, LogoLexer.SETPENCOLOR,
-            LogoLexer.HIDETURTLE, LogoLexer.SHOWTURTLE, LogoLexer.ARC
+            LogoLexer.HOME, LogoLexer.SETX, LogoLexer.SETY, LogoLexer.SETXY,
+            LogoLexer.SETHEADING, LogoLexer.ARC,
+            LogoLexer.PENUP, LogoLexer.PENDOWN,
+            LogoLexer.SETPC, LogoLexer.SETPENCOLOR, LogoLexer.SETPENSIZE,
+            LogoLexer.CLEARSCREEN, LogoLexer.HIDETURTLE, LogoLexer.SHOWTURTLE
+    );
+
+    // Value-returning built-in functions
+    private static final Set<Integer> BUILTIN_FUNCS = Set.of(
+            LogoLexer.SIN, LogoLexer.COS, LogoLexer.SQRT,
+            LogoLexer.ABS, LogoLexer.INT, LogoLexer.ROUND, LogoLexer.RANDOM,
+            LogoLexer.FIRST, LogoLexer.LAST, LogoLexer.COUNT, LogoLexer.SENTENCE,
+            LogoLexer.AND, LogoLexer.OR, LogoLexer.NOT
     );
 
     private static final Set<Integer> OPERATORS = Set.of(
@@ -58,7 +73,9 @@ public class SemanticTokensProvider {
             LogoLexer.LT, LogoLexer.GT, LogoLexer.LE, LogoLexer.GE
     );
 
-    public SemanticTokens provide(LogoParseResult result) {
+    public SemanticTokens provide(DocumentState state) {
+        LogoParseResult result = state.getParseResult();
+        SymbolTable symbolTable = state.getSymbolTable();
         List<Token> tokens = result.getAllTokens();
         List<Integer> data = new ArrayList<>();
 
@@ -76,7 +93,7 @@ public class SemanticTokensProvider {
                 continue;
             }
 
-            // COLON is the start of a :variable reference — consume COLON + IDENT together
+            // COLON is the start of a :variable reference - consume COLON + IDENT together
             if (type == LogoLexer.COLON) {
                 if (i + 1 < tokens.size()) {
                     Token next = tokens.get(i + 1);
@@ -103,7 +120,7 @@ public class SemanticTokensProvider {
                 continue;
             }
 
-            int tokenTypeIndex = classifyToken(token, tokens, i);
+            int tokenTypeIndex = classifyToken(token, tokens, i, symbolTable);
             int modifiers = modifiersFor(token, tokens, i);
 
             if (tokenTypeIndex < 0) {
@@ -124,18 +141,23 @@ public class SemanticTokensProvider {
         return new SemanticTokens(data);
     }
 
-    private int classifyToken(Token token, List<Token> tokens, int i) {
+    private int classifyToken(Token token, List<Token> tokens, int i, SymbolTable symbolTable) {
         int type = token.getType();
 
-        if (KEYWORDS.contains(type))  return TYPE_KEYWORD;
-        if (MACROS.contains(type))    return TYPE_KEYWORD;
-        if (OPERATORS.contains(type)) return TYPE_OPERATOR;
+        if (KEYWORDS.contains(type))      return TYPE_KEYWORD;
+        if (MACROS.contains(type))        return TYPE_KEYWORD;       // turtle/pen commands
+        if (BUILTIN_FUNCS.contains(type)) return TYPE_KEYWORD;       // value-returning builtins
+        if (OPERATORS.contains(type))     return TYPE_OPERATOR;
 
         if (type == LogoLexer.NUMBER)        return TYPE_NUMBER;
         if (type == LogoLexer.QUOTED_STRING) return TYPE_STRING;
         if (type == LogoLexer.COMMENT)       return TYPE_COMMENT;
 
-        if (type == LogoLexer.IDENT) return TYPE_FUNCTION;
+        if (type == LogoLexer.IDENT) {
+            // FOR [ i ... ] - the variable name is a loop variable, not a function
+            if (isForLoopVariable(tokens, i)) return TYPE_PARAMETER;
+            return TYPE_FUNCTION;
+        }
 
         return -1; // LBRACK, RBRACK, LPAREN, RPAREN — no highlighting
     }
@@ -143,14 +165,39 @@ public class SemanticTokensProvider {
     private int modifiersFor(Token token, List<Token> tokens, int i) {
         if (token.getType() == LogoLexer.NUMBER) return MOD_READONLY;
 
-        // IDENT immediately after TO = procedure name being declared
         if (token.getType() == LogoLexer.IDENT) {
             Token prev = prevNonWs(tokens, i);
             if (prev != null && prev.getType() == LogoLexer.TO) {
                 return MOD_DECLARATION | MOD_DEFINITION;
             }
+            if (isForLoopVariable(tokens, i)) {
+                return MOD_DECLARATION;
+            }
+            // Call site 'definition' modifier to make themes render with function colour
+            // rather than falling back to plain default text.
+            return MOD_DEFINITION;
         }
         return 0;
+    }
+
+    /**
+     * Returns true if the IDENT at index i is the loop variable in a FOR statement.
+     * Pattern in token stream: FOR  LBRACK  <this IDENT>
+     */
+    private boolean isForLoopVariable(List<Token> tokens, int i) {
+        Token prev = prevNonWs(tokens, i);
+        if (prev == null || prev.getType() != LogoLexer.LBRACK) return false;
+        int lbrackIdx = lastIndexOf(tokens, prev, i);
+        Token prevPrev = prevNonWs(tokens, lbrackIdx);
+        return prevPrev != null && prevPrev.getType() == LogoLexer.FOR;
+    }
+
+    /** Scan backwards from `before` to find the index of token instance `target`. */
+    private int lastIndexOf(List<Token> tokens, Token target, int before) {
+        for (int j = before - 1; j >= 0; j--) {
+            if (tokens.get(j) == target) return j;
+        }
+        return -1;
     }
 
     /** Appends one 5-integer LSP semantic token entry (delta-encoded). */
