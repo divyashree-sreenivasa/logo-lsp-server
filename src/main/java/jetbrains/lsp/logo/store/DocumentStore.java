@@ -1,5 +1,7 @@
 package jetbrains.lsp.logo.store;
 
+import jetbrains.lsp.logo.analysis.SymbolTable;
+import jetbrains.lsp.logo.analysis.SymbolTableBuilder;
 import jetbrains.lsp.logo.parser.LogoParseResult;
 import jetbrains.lsp.logo.parser.LogoParserFacade;
 
@@ -8,15 +10,17 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class DocumentStore {
 
-    private final Map<String, LogoParseResult> documents = new ConcurrentHashMap<>();
+    private final Map<String, DocumentState> documents = new ConcurrentHashMap<>();
 
-    public LogoParseResult update(String uri, String text) {
-        LogoParseResult result = LogoParserFacade.parse(text);
-        documents.put(uri, result);
-        return result;
+    public DocumentState update(String uri, String text) {
+        LogoParseResult parseResult = LogoParserFacade.parse(text);
+        SymbolTable symbolTable = new SymbolTableBuilder().build(parseResult.getTree());
+        DocumentState state = new DocumentState(parseResult, symbolTable);
+        documents.put(uri, state);
+        return state;
     }
 
-    public LogoParseResult get(String uri) {
+    public DocumentState get(String uri) {
         return documents.get(uri);
     }
 

@@ -1,7 +1,8 @@
 package jetbrains.lsp.logo;
 
+import jetbrains.lsp.logo.feature.GotoDeclarationProvider;
 import jetbrains.lsp.logo.feature.SemanticTokensProvider;
-import jetbrains.lsp.logo.parser.LogoParseResult;
+import jetbrains.lsp.logo.store.DocumentState;
 import jetbrains.lsp.logo.store.DocumentStore;
 import org.eclipse.lsp4j.*;
 import org.eclipse.lsp4j.jsonrpc.messages.Either;
@@ -11,6 +12,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.util.List;
+import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 
 public class LogoTextDocumentService implements TextDocumentService {
@@ -22,6 +24,7 @@ public class LogoTextDocumentService implements TextDocumentService {
 
     private final DocumentStore store = new DocumentStore();
     private final SemanticTokensProvider semanticTokensProvider = new SemanticTokensProvider();
+    private final GotoDeclarationProvider gotoDeclarationProvider = new GotoDeclarationProvider();
 
     public LogoTextDocumentService(LogoLanguageServer server) {
         this.server = server;
@@ -63,16 +66,24 @@ public class LogoTextDocumentService implements TextDocumentService {
     @Override
     public CompletableFuture<SemanticTokens> semanticTokensFull(SemanticTokensParams params) {
         String uri = params.getTextDocument().getUri();
-        LogoParseResult result = store.get(uri);
-        if (result == null) {
+        DocumentState state = store.get(uri);
+        if (state == null) {
             return CompletableFuture.completedFuture(new SemanticTokens(List.of()));
         }
-        return CompletableFuture.completedFuture(semanticTokensProvider.provide(result));
+        return CompletableFuture.completedFuture(semanticTokensProvider.provide(state));
     }
 
     @Override
     public CompletableFuture<Either<List<? extends Location>, List<? extends LocationLink>>>
     declaration(DeclarationParams params) {
-        return CompletableFuture.completedFuture(Either.forLeft(List.of()));
+        String uri = params.getTextDocument().getUri();
+        Position cursor = params.getPosition();
+        DocumentState state = store.get(uri);
+        if (state == null) {
+            return CompletableFuture.completedFuture(Either.forLeft(List.of()));
+        }
+        Optional<Location> location = gotoDeclarationProvider.resolve(uri, cursor, state);
+        return CompletableFuture.completedFuture(
+                Either.forLeft(location.map(List::of).orElse(List.of())));
     }
 }

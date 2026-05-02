@@ -14,12 +14,13 @@ public class PositionConverter {
         return new Range(new Position(line, start), new Position(line, end));
     }
 
-    /** Range spanning from the start of `from` to the end of `to` (single-line tokens). */
+    /** Range spanning from the start of `from` token to the end of `to` token (may be multi-line). */
     public static Range toRange(Token from, Token to) {
-        int line = from.getLine() - 1;
-        int start = from.getCharPositionInLine();
-        int end = to.getCharPositionInLine() + to.getText().length();
-        return new Range(new Position(line, start), new Position(line, end));
+        int startLine = from.getLine() - 1;
+        int startChar = from.getCharPositionInLine();
+        int endLine   = to.getLine() - 1;
+        int endChar   = to.getCharPositionInLine() + to.getText().length();
+        return new Range(new Position(startLine, startChar), new Position(endLine, endChar));
     }
 
     public static Position toPosition(Token token) {

@@ -10,7 +10,10 @@ public class LogoParserFacade {
     public static LogoParseResult parse(String source) {
         List<LogoParseResult.SyntaxError> errors = new ArrayList<>();
 
-        CharStream input = CharStreams.fromString(source);
+        // Uppercase the source so keyword tokens (WHILE, FOR, …) match regardless of
+        // the case the user typed. Positions are unaffected — uppercase leaves line
+        // numbers, column offsets, and token lengths identical to the original.
+        CharStream input = CharStreams.fromString(source.toUpperCase(java.util.Locale.ROOT));
         LogoLexer lexer = new LogoLexer(input);
         lexer.removeErrorListeners();
         lexer.addErrorListener(errorListener(errors));
