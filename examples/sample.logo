@@ -39,3 +39,10 @@ polygon 6 60
 PENUP
 HOME
 spiral 5 100
+
+; diagnostic errors/warnings
+spiral 5
+square 5
+FOR [i 1 :num] [
+  PRINT :i
+]
